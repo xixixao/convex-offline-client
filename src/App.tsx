@@ -1,14 +1,18 @@
 import { Link } from "@/components/typography/link";
 import { Button } from "@/components/ui/button";
-import { useMutation } from "convex/react";
+import { useOfflineMutation, useOfflineQuery } from "@/lib/ConvexOfflineClient";
+import {
+  OfflineDoc,
+  OfflineMutationCtx,
+  OfflineTable,
+  offlineMutation,
+  offlineQuery,
+  useSyncMutation,
+  useSyncQuery,
+} from "@/lib/offlineDatabase";
 import { api } from "../convex/_generated/api";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useOfflineQuery } from "@/lib/useOfflineQuery";
-import { jsonToConvex } from "convex/values";
-import { atomWithStorage } from "jotai/utils";
-import { useAtom } from "jotai/react";
-import { getDefaultStore } from "jotai/vanilla";
-import { ConvexClient } from "convex/browser";
+import { GenericId } from "convex/values";
+import { WithoutSystemFields } from "convex/server";
 
 // We have a completely separate client model from server model
 // Mutations will affect the client model
@@ -59,40 +63,78 @@ import { ConvexClient } from "convex/browser";
 //   return jsonToConvex(JSON.parse(cached));
 // }
 
-const convex = new ConvexClient(import.meta.env.VITE_CONVEX_URL as string);
+// const convex = new ConvexClient(import.meta.env.VITE_CONVEX_URL as string);
 
-const numbersAtom = atomWithStorage<
-  { value: number; uuid: string; synced: boolean }[]
->("numbers", []);
+// const numbersAtom = atomWithStorage<
+//   { value: number; uuid: string; synced: boolean }[]
+// >("numbers", []);
 
-const clientStore = getDefaultStore();
+// const clientStore = getDefaultStore();
 
-function syncNumbers() {
-  const numbers = clientStore.get(numbersAtom);
-  const unsynced = numbers.filter((n) => !n.synced);
-  void convex.mutation(api.myFunctions.addNumbers, { numbers: unsynced });
-}
+// function syncNumbers() {
+//   const numbers = clientStore.get(numbersAtom);
+//   const unsynced = numbers.filter((n) => !n.synced);
+//   void convex.mutation(api.myFunctions.addNumbers, { numbers: unsynced });
+// }
 
-function subscribeToNumbers() {
-  void convex.onUpdate(
-    api.myFunctions.listNumbers,
-    { count: 10 },
-    (serverNumbers) => {
-      const clientNumbers = clientStore.get(numbersAtom);
-      const syncedUUIDs = new Set(serverNumbers.map((n) => n.uuid));
-      clientStore.set(numbersAtom);
-    }
+// function subscribeToNumbers() {
+//   void convex.onUpdate(
+//     api.myFunctions.listNumbers,
+//     { count: 10 },
+//     (serverNumbers) => {
+//       const clientNumbers = clientStore.get(numbersAtom);
+//       const syncedUUIDs = new Set(serverNumbers.map((n) => n.uuid));
+//       clientStore.set(numbersAtom);
+//     }
+//   );
+// }
+
+const listNumbers = offlineQuery(async (ctx, args: { count: number }) => {
+  const numbers = await ctx.db.query("numbers").order("desc").take(args.count);
+  return numbers.toReversed().map((number) => number.value);
+});
+
+const insertNumber = offlineMutation(async (ctx, args: { value: number }) => {
+  await ctx.db.insert("numbers", {
+    value: args.value,
+    clientId: "client:" + Math.random(),
+    clientCreationTime: Date.now(),
+    synced: false,
+  });
+});
+
+async function syncServerValues<TableName extends OfflineTable>(
+  ctx: OfflineMutationCtx,
+  table: TableName,
+  documents: (Omit<WithoutSystemFields<OfflineDoc<TableName>>, "synced"> & {
+    clientId: GenericId<any>;
+  })[]
+) {
+  await Promise.all(
+    documents.map(async (number) => {
+      const unsynced = await ctx.db.get(number.clientId);
+      if (unsynced === null) {
+        await ctx.db.insert(table, { ...number, synced: true } as any);
+      }
+      await ctx.db.patch(number.clientId, { synced: true });
+    })
   );
 }
 
+async function syncNumbers(
+  ctx: OfflineMutationCtx,
+  documents: (Omit<OfflineDoc<"numbers">, "synced"> & {
+    clientId: GenericId<any>;
+  })[]
+) {
+  await syncServerValues(ctx, "numbers", documents);
+}
+
 function App() {
-  const [numbers, setNumbers] = useAtom(numbersAtom);
-  // const numbers = useOfflineQuery(
-  //   api.myFunctions.listNumbers,
-  //   { count: 10 },
-  //   []
-  // );
-  // const addNumber = useMutation(api.myFunctions.addNumber);
+  const numbers = useOfflineQuery(listNumbers, { count: 10 });
+  const addNumber = useOfflineMutation(insertNumber);
+  const addNumbersOnServer = useSyncMutation(api.myFunctions.addNumbers);
+  useSyncQuery(api.myFunctions.listNumbers, { count: 10 }, syncNumbers);
 
   return (
     <main className="container max-w-2xl flex flex-col gap-8">
@@ -106,16 +148,34 @@ function App() {
       <p>
         <Button
           onClick={() => {
-            setNumbers((numbers) => [
-              ...numbers,
-              {
+            // setNumbers((numbers) => [
+            //   ...numbers,
+            //   {
+            //     value: Math.floor(Math.random() * 10),
+            //     uuid: Math.random() + "",
+            //     synced: false,
+            //   },
+            // ]);
+            // syncNumbers();
+            void (async () => {
+              await addNumber({
                 value: Math.floor(Math.random() * 10),
-                uuid: Math.random() + "",
-                synced: false,
-              },
-            ]);
-            syncNumbers();
-            // void addNumber({ value: Math.floor(Math.random() * 10) });
+              });
+              await addNumbersOnServer(async (ctx) => {
+                const unSyncedNumbers = (
+                  await ctx.db
+                    .query("numbers")
+                    // .filter((q) => q.eq(q.field("synced"), false))
+                    .collect()
+                ).filter((number) => !number.synced);
+                return {
+                  numbers: unSyncedNumbers.map((number) => ({
+                    value: number.value,
+                    clientId: number._id,
+                  })),
+                };
+              });
+            })();
           }}
         >
           Add a random number
@@ -123,9 +183,9 @@ function App() {
       </p>
       <p>
         Numbers:{" "}
-        {numbers.length === 0
+        {numbers?.length === 0
           ? "Click the button!"
-          : numbers.map(({ value }) => value).join(", ") ?? "..."}
+          : numbers?.join(", ") ?? "..."}
       </p>
       <p>
         Edit{" "}
