@@ -139,12 +139,8 @@ function App() {
   return (
     <main className="container max-w-2xl flex flex-col gap-8">
       <h1 className="text-4xl font-extrabold my-8 text-center">
-        Convex + React (Vite)
+        Convex Offline Todo List
       </h1>
-      <p>
-        Click the button and open this page in another window - this data is
-        persisted in the Convex cloud database!
-      </p>
       <p>
         <Button
           onClick={() => {
