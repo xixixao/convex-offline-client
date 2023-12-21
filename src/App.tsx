@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../convex/_generated/api";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { resolveCompleted } from "@/../convex/myFunctions";
 
 // We have a completely separate client model from server model
 // Mutations will affect the client model
@@ -63,7 +64,12 @@ const listTodos = offlineQuery(async (ctx, args: { count: number }) => {
 });
 
 const insertTodo = offlineMutation(async (ctx, { text }: { text: string }) => {
-  await ctx.db.insert("todos", { text, synced: false, completed: false });
+  await ctx.db.insert("todos", {
+    text,
+    synced: false,
+    completed: false,
+    completedChangedTime: Date.now(),
+  });
 });
 
 const updateTodo = offlineMutation(
@@ -71,7 +77,11 @@ const updateTodo = offlineMutation(
     ctx,
     { _id, completed }: { _id: OfflineId<"todos">; completed: boolean }
   ) => {
-    await ctx.db.patch(_id, { completed, synced: false });
+    await ctx.db.patch(_id, {
+      completed,
+      completedChangedTime: Date.now(),
+      synced: false,
+    });
   }
 );
 
@@ -84,7 +94,7 @@ async function syncTodos(
     }
   >[]
 ) {
-  await syncServerValues(ctx, "todos", documents);
+  await syncServerValues(ctx, "todos", documents, resolveCompleted);
 }
 
 export default function App() {

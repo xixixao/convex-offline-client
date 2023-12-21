@@ -7,6 +7,7 @@ export default defineSchema(
       clientCreationTime: v.number(),
       clientId: v.string(),
       completed: v.boolean(),
+      completedChangedTime: v.number(),
       text: v.string(),
     })
       .index("clientCreationTime", ["clientCreationTime"])

@@ -23,6 +23,7 @@ export const addTodos = mutation({
         clientCreationTime: v.number(),
         clientId: v.string(),
         completed: v.boolean(),
+        completedChangedTime: v.number(),
         text: v.string(),
       })
     ),
@@ -36,8 +37,28 @@ export const addTodos = mutation({
       if (existing === null) {
         await ctx.db.insert("todos", todo);
       } else {
-        await ctx.db.patch(existing._id, todo);
+        await ctx.db.patch(existing._id, {
+          ...todo,
+          ...resolveCompleted(existing, todo),
+        });
       }
     }
   },
 });
+
+export function resolveCompleted(
+  existing: {
+    completed: boolean;
+    completedChangedTime: number;
+  },
+  incoming: {
+    completed: boolean;
+    completedChangedTime: number;
+  }
+) {
+  const { completed, completedChangedTime } =
+    incoming.completedChangedTime > existing.completedChangedTime
+      ? incoming
+      : existing;
+  return { completed, completedChangedTime };
+}
