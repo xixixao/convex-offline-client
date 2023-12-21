@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Toggle } from "@/components/ui/toggle";
 import {
   Expand,
   useOfflineMutation,
@@ -16,9 +15,12 @@ import {
   useSyncQuery,
 } from "@/lib/offlineDatabase";
 import { getUnsynced, syncServerValues } from "@/lib/offlineHelpers";
+import { useControls } from "@/useControls";
 import { WithoutSystemFields } from "convex/server";
 import { useEffect, useState } from "react";
 import { api } from "../convex/_generated/api";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 
 // We have a completely separate client model from server model
 // Mutations will affect the client model
@@ -80,9 +82,8 @@ async function syncTodos(
   await syncServerValues(ctx, "todos", documents);
 }
 
-function App() {
-  const [online, setOnline] = useState(false);
-  const [syncOn, setSyncOn] = useState(false);
+export default function App() {
+  const { online, syncOn, controls } = useControls();
   const todos = useOfflineQuery(listTodos, { count: 10 });
 
   const addTodo = useOfflineMutation(insertTodo);
@@ -106,34 +107,7 @@ function App() {
       <h1 className="text-4xl font-extrabold my-8 text-center">
         Convex Offline Todo List
       </h1>
-      <div className="flex justify-end">
-        <div className="flex gap-2">
-          <Toggle
-            variant="destructive"
-            pressed={online}
-            onPressedChange={() => {
-              if (online) {
-                setSyncOn(false);
-              }
-              setOnline(!online);
-            }}
-          >
-            {online ? <>Online</> : <>Offline</>}
-          </Toggle>
-          <Toggle
-            variant="destructive"
-            pressed={syncOn}
-            onPressedChange={() => {
-              if (!syncOn) {
-                setOnline(true);
-              }
-              setSyncOn(!syncOn);
-            }}
-          >
-            {syncOn ? <>Sync On</> : <>Sync Off</>}
-          </Toggle>
-        </div>
-      </div>
+      {controls}
       <div className="flex items-stretch gap-2">
         <Textarea
           value={text}
@@ -173,5 +147,3 @@ function App() {
     </main>
   );
 }
-
-export default App;
