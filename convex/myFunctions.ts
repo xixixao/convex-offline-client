@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { vTodoFields } from "./schema";
 
 export const listTodos = query({
   args: {
@@ -18,15 +19,7 @@ export const listTodos = query({
 
 export const addTodos = mutation({
   args: {
-    todos: v.array(
-      v.object({
-        clientCreationTime: v.number(),
-        clientId: v.string(),
-        completed: v.boolean(),
-        completedChangedTime: v.number(),
-        text: v.string(),
-      })
-    ),
+    todos: v.array(v.object(vTodoFields)),
   },
   handler: async (ctx, args) => {
     for (const todo of args.todos) {
@@ -39,26 +32,37 @@ export const addTodos = mutation({
       } else {
         await ctx.db.patch(existing._id, {
           ...todo,
-          ...resolveCompleted(existing, todo),
+          ...resolveChanges(existing, todo),
         });
       }
     }
   },
 });
 
-export function resolveCompleted(
+export function resolveChanges(
   existing: {
     completed: boolean;
     completedChangedTime: number;
+    deletedTime: number | null;
   },
   incoming: {
     completed: boolean;
     completedChangedTime: number;
+    deletedTime: number | null;
   }
 ) {
   const { completed, completedChangedTime } =
     incoming.completedChangedTime > existing.completedChangedTime
       ? incoming
       : existing;
-  return { completed, completedChangedTime };
+
+  const deletedTime = incoming.deletedTime ?? existing.deletedTime;
+  return {
+    completed,
+    completedChangedTime,
+    deletedTime:
+      deletedTime !== null && deletedTime > completedChangedTime
+        ? deletedTime
+        : null,
+  };
 }

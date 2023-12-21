@@ -6,6 +6,7 @@ export const schema = defineSchema({
     text: v.string(),
     completed: v.boolean(),
     completedChangedTime: v.number(),
+    deletedTime: v.union(v.number(), v.null()),
     synced: v.boolean(),
   }),
 });

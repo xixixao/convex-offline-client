@@ -21,7 +21,8 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../convex/_generated/api";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { resolveCompleted } from "@/../convex/myFunctions";
+import { resolveChanges } from "@/../convex/myFunctions";
+import { TrashIcon } from "@radix-ui/react-icons";
 
 // We have a completely separate client model from server model
 // Mutations will affect the client model
@@ -60,7 +61,9 @@ import { resolveCompleted } from "@/../convex/myFunctions";
 // of subscriptions, which themselves populate the store
 
 const listTodos = offlineQuery(async (ctx, args: { count: number }) => {
-  return await ctx.db.query("todos").order("desc").take(args.count);
+  return (await ctx.db.query("todos").order("desc").take(args.count)).filter(
+    (todo) => todo.deletedTime === null
+  );
 });
 
 const insertTodo = offlineMutation(async (ctx, { text }: { text: string }) => {
@@ -69,6 +72,7 @@ const insertTodo = offlineMutation(async (ctx, { text }: { text: string }) => {
     synced: false,
     completed: false,
     completedChangedTime: Date.now(),
+    deletedTime: null,
   });
 });
 
@@ -85,6 +89,15 @@ const updateTodo = offlineMutation(
   }
 );
 
+const deleteTodo = offlineMutation(
+  async (ctx, { _id }: { _id: OfflineId<"todos"> }) => {
+    await ctx.db.patch(_id, {
+      deletedTime: Date.now(),
+      synced: false,
+    });
+  }
+);
+
 async function syncTodos(
   ctx: OfflineMutationCtx,
   documents: Expand<
@@ -94,7 +107,7 @@ async function syncTodos(
     }
   >[]
 ) {
-  await syncServerValues(ctx, "todos", documents, resolveCompleted);
+  await syncServerValues(ctx, "todos", documents, resolveChanges);
 }
 
 export default function App() {
@@ -103,6 +116,7 @@ export default function App() {
 
   const addTodo = useOfflineMutation(insertTodo);
   const changeCompleted = useOfflineMutation(updateTodo);
+  const changeDeleted = useOfflineMutation(deleteTodo);
   const addTodosOnServer = useSyncMutation(api.myFunctions.addTodos);
   const syncTodosToServer = useCallback(async () => {
     await addTodosOnServer(async (ctx) => ({
@@ -160,27 +174,46 @@ export default function App() {
         ) : (
           <div className="flex flex-col gap-1">
             {todos?.map(({ text, completed, synced, _id }) => (
-              <div
-                key={_id}
-                className={cn(
-                  "flex gap-2 bg-secondary p-2 rounded-lg border items-center",
-                  synced ? "border-transparent" : "border-red-500"
-                )}
-              >
-                <div className="flex-grow">{text}</div>
-                <Checkbox
-                  checked={completed}
-                  onCheckedChange={(checked) => {
-                    const completed = checked === true;
-                    void (async () => {
-                      await changeCompleted({ _id, completed });
-                      if (!syncOn) {
-                        return;
-                      }
-                      await syncTodosToServer();
-                    })();
-                  }}
-                />
+              <div key={_id} className="flex gap-2 items-center">
+                <div
+                  className={cn(
+                    "flex flex-grow gap-2 bg-secondary p-2 rounded-lg border items-center",
+                    synced ? "border-transparent" : "border-red-500"
+                  )}
+                >
+                  <Checkbox
+                    checked={completed}
+                    onCheckedChange={(checked) => {
+                      const completed = checked === true;
+                      void (async () => {
+                        await changeCompleted({ _id, completed });
+                        if (!syncOn) {
+                          return;
+                        }
+                        await syncTodosToServer();
+                      })();
+                    }}
+                  />
+                  <div className="flex-grow">{text}</div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hover:bg-destructive/20 hover:text-red-500"
+                >
+                  <TrashIcon
+                    className="h-4 w-4"
+                    onClick={() => {
+                      void (async () => {
+                        await changeDeleted({ _id });
+                        if (!syncOn) {
+                          return;
+                        }
+                        await syncTodosToServer();
+                      })();
+                    }}
+                  />
+                </Button>
               </div>
             ))}
           </div>
