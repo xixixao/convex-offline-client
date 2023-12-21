@@ -3,10 +3,10 @@ import { v } from "convex/values";
 
 export default defineSchema(
   {
-    numbers: defineTable({
+    todos: defineTable({
       clientCreationTime: v.number(),
       clientId: v.string(),
-      value: v.number(),
+      text: v.string(),
     })
       .index("clientCreationTime", ["clientCreationTime"])
       .index("clientId", ["clientId"]),

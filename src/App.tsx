@@ -1,5 +1,5 @@
-import { Link } from "@/components/typography/link";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Toggle } from "@/components/ui/toggle";
 import {
   Expand,
@@ -10,14 +10,13 @@ import {
   OfflineDoc,
   OfflineMutationCtx,
   OfflineQueryCtx,
-  OfflineTable,
   offlineMutation,
   offlineQuery,
   useSyncMutation,
   useSyncQuery,
 } from "@/lib/offlineDatabase";
+import { getUnsynced, syncServerValues } from "@/lib/offlineHelpers";
 import { WithoutSystemFields } from "convex/server";
-import { GenericId } from "convex/values";
 import { useEffect, useState } from "react";
 import { api } from "../convex/_generated/api";
 
@@ -57,161 +56,57 @@ import { api } from "../convex/_generated/api";
 // the store is subscribed to the server via a number
 // of subscriptions, which themselves populate the store
 
-// function useReadNumbers() {
-//   const KEY = "numbers";
-//   readConvexFromLocalStorage(KEY);
-// }
-
-// function readConvexFromLocalStorage(key: any) {
-//   const cached = localStorage.getItem("STORE_"+key);
-//   if (cached === null) {
-//     return undefined;
-//   }
-//   return jsonToConvex(JSON.parse(cached));
-// }
-
-// const convex = new ConvexClient(import.meta.env.VITE_CONVEX_URL as string);
-
-// const numbersAtom = atomWithStorage<
-//   { value: number; uuid: string; synced: boolean }[]
-// >("numbers", []);
-
-// const clientStore = getDefaultStore();
-
-// function syncNumbers() {
-//   const numbers = clientStore.get(numbersAtom);
-//   const unsynced = numbers.filter((n) => !n.synced);
-//   void convex.mutation(api.myFunctions.addNumbers, { numbers: unsynced });
-// }
-
-// function subscribeToNumbers() {
-//   void convex.onUpdate(
-//     api.myFunctions.listNumbers,
-//     { count: 10 },
-//     (serverNumbers) => {
-//       const clientNumbers = clientStore.get(numbersAtom);
-//       const syncedUUIDs = new Set(serverNumbers.map((n) => n.uuid));
-//       clientStore.set(numbersAtom);
-//     }
-//   );
-// }
-
-const listNumbers = offlineQuery(async (ctx, args: { count: number }) => {
-  const numbers = await ctx.db.query("numbers").order("desc").take(args.count);
-  return numbers.toReversed();
+const listTodos = offlineQuery(async (ctx, args: { count: number }) => {
+  return await ctx.db.query("todos").order("desc").take(args.count);
 });
 
-const insertNumber = offlineMutation(async (ctx, args: { value: number }) => {
-  await ctx.db.insert("numbers", {
-    value: args.value,
-    synced: false,
-  });
+const insertTodo = offlineMutation(async (ctx, { text }: { text: string }) => {
+  await ctx.db.insert("todos", { text, synced: false });
 });
 
-async function syncServerValues<TableName extends OfflineTable>(
-  ctx: OfflineMutationCtx,
-  table: TableName,
-  documents: (Omit<WithoutSystemFields<OfflineDoc<TableName>>, "synced"> & {
-    clientId: string;
-    clientCreationTime: number;
-  })[]
-) {
-  await Promise.all(
-    documents.map(async ({ clientId, clientCreationTime, ...doc }) => {
-      const unsynced = await ctx.db.get(clientId as GenericId<any>);
-      if (unsynced === null) {
-        await ctx.db.insert(table, {
-          ...doc,
-          _id: clientId,
-          _creationTime: clientCreationTime,
-          synced: true,
-        } as any);
-      }
-      await ctx.db.patch(clientId as GenericId<any>, { synced: true });
-    })
-  );
+async function getUnsyncedTodos(ctx: OfflineQueryCtx) {
+  return { todos: await getUnsynced(ctx, "todos") };
 }
 
-async function syncNumbers(
+async function syncTodos(
   ctx: OfflineMutationCtx,
   documents: Expand<
-    Omit<WithoutSystemFields<OfflineDoc<"numbers">>, "synced"> & {
+    Omit<WithoutSystemFields<OfflineDoc<"todos">>, "synced"> & {
       clientId: string;
       clientCreationTime: number;
     }
   >[]
 ) {
-  await syncServerValues(ctx, "numbers", documents);
-}
-
-async function getUnsyncedNumbers(ctx: OfflineQueryCtx) {
-  return { numbers: await getUnsynced(ctx, "numbers") };
-}
-
-async function getUnsynced<TableName extends OfflineTable>(
-  ctx: OfflineQueryCtx,
-  table: TableName
-): Promise<
-  (Omit<WithoutSystemFields<OfflineDoc<TableName>>, "synced"> & {
-    clientId: string;
-    clientCreationTime: number;
-  })[]
-> {
-  const unSyncedDocs = (
-    await ctx.db
-      .query(table)
-      // TODO: When offline client supports filter()
-      // .filter((q) => q.eq(q.field("synced"), false))
-      .collect()
-  ).filter((doc) => !doc.synced);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  return unSyncedDocs.map(({ synced, _id, _creationTime, ...doc }) => ({
-    ...doc,
-    clientId: _id,
-    clientCreationTime: _creationTime,
-  })) as any;
+  await syncServerValues(ctx, "todos", documents);
 }
 
 function App() {
   const [online, setOnline] = useState(false);
   const [syncOn, setSyncOn] = useState(false);
-  const numbers = useOfflineQuery(listNumbers, { count: 10 });
+  const todos = useOfflineQuery(listTodos, { count: 10 });
 
-  const addNumber = useOfflineMutation(insertNumber);
-  const addNumbersOnServer = useSyncMutation(api.myFunctions.addNumbers);
+  const addTodo = useOfflineMutation(insertTodo);
+  const addTodosOnServer = useSyncMutation(api.myFunctions.addTodos);
   useSyncQuery(
-    api.myFunctions.listNumbers,
+    api.myFunctions.listTodos,
     online ? { count: 10 } : "skip",
-    syncNumbers
+    syncTodos
   );
 
   useEffect(() => {
     if (syncOn) {
-      void addNumbersOnServer(getUnsyncedNumbers);
+      void addTodosOnServer(getUnsyncedTodos);
     }
-  }, [addNumbersOnServer, syncOn]);
+  }, [addTodosOnServer, syncOn]);
+
+  const [text, setText] = useState("");
 
   return (
     <main className="container max-w-2xl flex flex-col gap-8">
       <h1 className="text-4xl font-extrabold my-8 text-center">
         Convex Offline Todo List
       </h1>
-      <div className="flex justify-between">
-        <Button
-          onClick={() => {
-            void (async () => {
-              await addNumber({
-                value: Math.floor(Math.random() * 10),
-              });
-              if (!syncOn) {
-                return;
-              }
-              await addNumbersOnServer(getUnsyncedNumbers);
-            })();
-          }}
-        >
-          Add a random number
-        </Button>
+      <div className="flex justify-end">
         <div className="flex gap-2">
           <Toggle
             variant="destructive"
@@ -239,40 +134,42 @@ function App() {
           </Toggle>
         </div>
       </div>
+      <div className="flex items-stretch gap-2">
+        <Textarea
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+          }}
+        />
+        <Button
+          className="flex h-auto"
+          onClick={() => {
+            void (async () => {
+              await addTodo({ text });
+              if (!syncOn) {
+                return;
+              }
+              await addTodosOnServer(getUnsyncedTodos);
+            })();
+            setText("");
+          }}
+        >
+          Add
+        </Button>
+      </div>
       <div>
-        Numbers:{" "}
-        {numbers?.length === 0 ? (
-          "Click the button!"
+        {todos?.length === 0 ? (
+          "Add a todo"
         ) : (
-          <div className="inline-flex gap-1">
-            {numbers?.map(({ value, synced, _id }) => (
-              <span key={_id} className={synced ? "" : "text-red-500"}>
-                {value}
-              </span>
+          <div className="flex flex-col gap-1">
+            {todos?.map(({ text, synced, _id }) => (
+              <div key={_id} className={synced ? "" : "text-red-500"}>
+                {text}
+              </div>
             ))}
           </div>
         )}
       </div>
-      <p>
-        Edit{" "}
-        <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
-          convex/myFunctions.ts
-        </code>{" "}
-        to change your backend
-      </p>
-      <p>
-        Edit{" "}
-        <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
-          src/App.tsx
-        </code>{" "}
-        to change your frontend
-      </p>
-      <p>
-        Check out{" "}
-        <Link target="_blank" href="https://docs.convex.dev/home">
-          Convex docs
-        </Link>
-      </p>
     </main>
   );
 }

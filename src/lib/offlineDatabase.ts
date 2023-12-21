@@ -1,30 +1,21 @@
 import {
-  QueryBuilder,
-  useSyncQuery as useSyncQueryGeneric,
-  useSyncMutation as useSyncMutationGeneric,
-  offlineQuery as offlineQueryGeneric,
-  offlineMutation as offlineMutationGeneric,
-  OfflineQueryCtx as OfflineQueryCtxGeneric,
-  OfflineMutationCtx as OfflineMutationCtxGeneric,
   MutationBuilder,
-  UseSyncQuery,
+  OfflineMutationCtx as OfflineMutationCtxGeneric,
+  OfflineQueryCtx as OfflineQueryCtxGeneric,
+  QueryBuilder,
   UseSyncMutation,
+  UseSyncQuery,
+  offlineMutation as offlineMutationGeneric,
+  offlineQuery as offlineQueryGeneric,
+  useSyncMutation as useSyncMutationGeneric,
+  useSyncQuery as useSyncQueryGeneric,
 } from "@/lib/ConvexOfflineClient";
+import { schema } from "@/lib/offlineSchema";
 import {
-  defineSchema,
-  defineTable,
   DataModelFromSchemaDefinition,
-  TableNamesInDataModel,
   DocumentByName,
+  TableNamesInDataModel,
 } from "convex/server";
-import { v } from "convex/values";
-
-const schema = defineSchema({
-  numbers: defineTable({
-    value: v.number(),
-    synced: v.boolean(),
-  }),
-});
 
 type DataModel = DataModelFromSchemaDefinition<typeof schema>;
 

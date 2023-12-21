@@ -1,43 +1,39 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
-export const listNumbers = query({
+export const listTodos = query({
   args: {
     count: v.number(),
   },
   handler: async (ctx, args) => {
     const numbers = await ctx.db
-      .query("numbers")
+      .query("todos")
       .withIndex("clientCreationTime")
       .order("desc")
       .take(args.count);
-    return (
-      numbers
-        .toReversed()
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        .map(({ _id, _creationTime, ...fields }) => fields)
-    );
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    return numbers.map(({ _id, _creationTime, ...fields }) => fields);
   },
 });
 
-export const addNumbers = mutation({
+export const addTodos = mutation({
   args: {
-    numbers: v.array(
+    todos: v.array(
       v.object({
         clientCreationTime: v.number(),
         clientId: v.string(),
-        value: v.number(),
+        text: v.string(),
       })
     ),
   },
   handler: async (ctx, args) => {
-    for (const number of args.numbers) {
+    for (const number of args.todos) {
       const existing = await ctx.db
-        .query("numbers")
+        .query("todos")
         .withIndex("clientId", (q) => q.eq("clientId", number.clientId))
         .unique();
       if (existing === null) {
-        await ctx.db.insert("numbers", number);
+        await ctx.db.insert("todos", number);
       }
     }
   },
