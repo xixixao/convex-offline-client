@@ -13,6 +13,7 @@ import {
   QueryInitializer,
   TableNamesInDataModel,
   WithoutSystemFields,
+  getFunctionName,
 } from "convex/server";
 import { GenericId, JSONValue, Value, convexToJson } from "convex/values";
 import {
@@ -211,7 +212,7 @@ export type UseSyncQuery<DataModel extends GenericDataModel> = <
   Query extends FunctionReference<"query">
 >(
   query: Query,
-  args: Query["_args"],
+  args: Query["_args"] | "skip",
   callback: (
     ctx: OfflineMutationCtx<DataModel>,
     result: Query["_returnType"]
@@ -227,6 +228,9 @@ export const useSyncQuery: UseSyncQuery<any> = (query, args, callback) => {
   const serializedArgs = JSON.stringify(convexToJson(args));
   useEffect(
     () => {
+      if (args === "skip") {
+        return;
+      }
       const watch = reactClient.watchQuery(query, args);
       return watch.onUpdate(() => {
         const result = watch.localQueryResult();
@@ -234,7 +238,7 @@ export const useSyncQuery: UseSyncQuery<any> = (query, args, callback) => {
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [callback, client, query, reactClient, serializedArgs]
+    [callback, client, getFunctionName(query), reactClient, serializedArgs]
   );
 };
 
@@ -566,6 +570,8 @@ export class QueryImpl implements Query<GenericTableInfo> {
         ? query.source.client.tables.get(query.source.tableName) ?? []
         : [];
 
+    results = results.toSorted((a, b) => a._creationTime - b._creationTime);
+
     if (query.source.order === "desc") {
       results = results.toReversed();
     }
@@ -696,6 +702,7 @@ export function getWriter(
       validateArg(table, 1, "insert", "table");
       validateArg(value, 2, "insert", "value");
 
+      // Unlike on the backend, _id and _creationTime can be overriden!
       const _id = "client:" + Math.random();
       const _creationTime = +new Date();
 
@@ -757,3 +764,10 @@ export function getWriter(
     },
   };
 }
+
+export type Expand<ObjectType extends Record<any, any>> =
+  ObjectType extends Record<any, any>
+    ? {
+        [Key in keyof ObjectType]: ObjectType[Key];
+      }
+    : never;

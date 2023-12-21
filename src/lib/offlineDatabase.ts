@@ -4,6 +4,7 @@ import {
   useSyncMutation as useSyncMutationGeneric,
   offlineQuery as offlineQueryGeneric,
   offlineMutation as offlineMutationGeneric,
+  OfflineQueryCtx as OfflineQueryCtxGeneric,
   OfflineMutationCtx as OfflineMutationCtxGeneric,
   MutationBuilder,
   UseSyncQuery,
@@ -21,14 +22,13 @@ import { v } from "convex/values";
 const schema = defineSchema({
   numbers: defineTable({
     value: v.number(),
-    clientCreationTime: v.number(),
-    clientId: v.string(),
     synced: v.boolean(),
   }),
 });
 
 type DataModel = DataModelFromSchemaDefinition<typeof schema>;
 
+export type OfflineQueryCtx = OfflineQueryCtxGeneric<DataModel>;
 export type OfflineMutationCtx = OfflineMutationCtxGeneric<DataModel>;
 export type OfflineTable = TableNamesInDataModel<DataModel>;
 export type OfflineDoc<TableName extends OfflineTable> = DocumentByName<
