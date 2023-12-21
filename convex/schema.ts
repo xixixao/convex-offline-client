@@ -6,6 +6,7 @@ export default defineSchema(
     todos: defineTable({
       clientCreationTime: v.number(),
       clientId: v.string(),
+      completed: v.boolean(),
       text: v.string(),
     })
       .index("clientCreationTime", ["clientCreationTime"])

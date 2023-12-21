@@ -16,6 +16,7 @@ import {
   DocumentByName,
   TableNamesInDataModel,
 } from "convex/server";
+import { GenericId } from "convex/values";
 
 type DataModel = DataModelFromSchemaDefinition<typeof schema>;
 
@@ -26,6 +27,7 @@ export type OfflineDoc<TableName extends OfflineTable> = DocumentByName<
   DataModel,
   TableName
 >;
+export type OfflineId<TableName extends OfflineTable> = GenericId<TableName>;
 
 export const offlineQuery: QueryBuilder<DataModel> = offlineQueryGeneric;
 export const offlineMutation: MutationBuilder<DataModel> =

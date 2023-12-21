@@ -29,7 +29,7 @@ export async function syncServerValues<TableName extends OfflineTable>(
           synced: true,
         } as any);
       }
-      await ctx.db.patch(clientId as GenericId<any>, { synced: true });
+      await ctx.db.patch(clientId as GenericId<any>, { ...doc, synced: true });
     })
   );
 }

@@ -7,8 +7,8 @@ import {
 } from "@/lib/ConvexOfflineClient";
 import {
   OfflineDoc,
+  OfflineId,
   OfflineMutationCtx,
-  OfflineQueryCtx,
   offlineMutation,
   offlineQuery,
   useSyncMutation,
@@ -17,7 +17,7 @@ import {
 import { getUnsynced, syncServerValues } from "@/lib/offlineHelpers";
 import { useControls } from "@/useControls";
 import { WithoutSystemFields } from "convex/server";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../convex/_generated/api";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
@@ -63,12 +63,17 @@ const listTodos = offlineQuery(async (ctx, args: { count: number }) => {
 });
 
 const insertTodo = offlineMutation(async (ctx, { text }: { text: string }) => {
-  await ctx.db.insert("todos", { text, synced: false });
+  await ctx.db.insert("todos", { text, synced: false, completed: false });
 });
 
-async function getUnsyncedTodos(ctx: OfflineQueryCtx) {
-  return { todos: await getUnsynced(ctx, "todos") };
-}
+const updateTodo = offlineMutation(
+  async (
+    ctx,
+    { _id, completed }: { _id: OfflineId<"todos">; completed: boolean }
+  ) => {
+    await ctx.db.patch(_id, { completed, synced: false });
+  }
+);
 
 async function syncTodos(
   ctx: OfflineMutationCtx,
@@ -87,7 +92,14 @@ export default function App() {
   const todos = useOfflineQuery(listTodos, { count: 10 });
 
   const addTodo = useOfflineMutation(insertTodo);
+  const changeCompleted = useOfflineMutation(updateTodo);
   const addTodosOnServer = useSyncMutation(api.myFunctions.addTodos);
+  const syncTodosToServer = useCallback(async () => {
+    await addTodosOnServer(async (ctx) => ({
+      todos: await getUnsynced(ctx, "todos"),
+    }));
+  }, [addTodosOnServer]);
+
   useSyncQuery(
     api.myFunctions.listTodos,
     online ? { count: 10 } : "skip",
@@ -96,9 +108,9 @@ export default function App() {
 
   useEffect(() => {
     if (syncOn) {
-      void addTodosOnServer(getUnsyncedTodos);
+      void syncTodosToServer();
     }
-  }, [addTodosOnServer, syncOn]);
+  }, [syncTodosToServer, syncOn]);
 
   const [text, setText] = useState("");
 
@@ -117,13 +129,14 @@ export default function App() {
         />
         <Button
           className="flex h-auto"
+          disabled={text === ""}
           onClick={() => {
             void (async () => {
               await addTodo({ text });
               if (!syncOn) {
                 return;
               }
-              await addTodosOnServer(getUnsyncedTodos);
+              await syncTodosToServer();
             })();
             setText("");
           }}
@@ -136,9 +149,28 @@ export default function App() {
           "Add a todo"
         ) : (
           <div className="flex flex-col gap-1">
-            {todos?.map(({ text, synced, _id }) => (
-              <div key={_id} className={synced ? "" : "text-red-500"}>
-                {text}
+            {todos?.map(({ text, completed, synced, _id }) => (
+              <div
+                key={_id}
+                className={cn(
+                  "flex gap-2 bg-secondary p-2 rounded-lg border items-center",
+                  synced ? "border-transparent" : "border-red-500"
+                )}
+              >
+                <div className="flex-grow">{text}</div>
+                <Checkbox
+                  checked={completed}
+                  onCheckedChange={(checked) => {
+                    const completed = checked === true;
+                    void (async () => {
+                      await changeCompleted({ _id, completed });
+                      if (!syncOn) {
+                        return;
+                      }
+                      await syncTodosToServer();
+                    })();
+                  }}
+                />
               </div>
             ))}
           </div>
